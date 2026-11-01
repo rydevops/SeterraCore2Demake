@@ -21,7 +21,7 @@ Built with plain HTML/CSS/JS + `<canvas>` (no build step). The game lives at the
 In battle, tap the command buttons; tap an enemy (or its button) to target.
 
 ## How the sprite sheet is used
-`tools/maya_sheet_source.png` (+ `tools/maya_sprite_atlas_metadata.json`) is sliced by `tools/slice_sprites.py` into `assets/maya.png` and `assets/maya_atlas.js`. The metadata is only approximate, so the script uses it for rows and ordering and then finds the real frames from the pixels (hair blobs, k-means, hand-measured death frames). Frame counts are per direction (e.g. Up walk has 4 frames, Down melee has 6, death has 7).
+`tools/maya_sheet_source.png` is sliced by `tools/slice_sprites.py` into `assets/maya.png` and `assets/maya_atlas.js`. The script reads each direction group's range from the label bars, counts the real frames by hair blobs, and strips the panel borders. Frame counts differ per direction (e.g. Down walk has 6, Up walk has 5, Down idle has 4 vs 3 elsewhere, death has 7).
 
 | Sheet strip | In game |
 |---|---|

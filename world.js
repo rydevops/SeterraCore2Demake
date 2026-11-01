@@ -6,7 +6,7 @@ const SOLID = new Set([T.FOREST, T.WATER, T.ROCK, T.ROOF, T.WALL, T.PILLAR, T.CA
 const MW = 64, MH = 48, TS = 32;
 const TOWN_RECT = { x0: 3, y0: 3, x1: 21, y1: 17 };
 const SPAWN = { tx: 11, ty: 12 };
-const WORLD_SCALE = .68;
+const WORLD_SCALE = .8;
 /* one-shot (or looping) action animation for the overworld player */
 const mkAct = (anim, extra = .05, loop = false) => ({ anim, t: 0, fps: animFps(anim), loop, dur: loop ? 1.3 : animDur(anim) + extra });
 

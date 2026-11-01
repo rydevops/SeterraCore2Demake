@@ -1,10 +1,11 @@
 'use strict';
 /* Turn-based battle: Maya uses every animation (run in/out, 3 attacks, special, damage, fall, victory) */
 let B = null;
-const BATTLE_SCALE = 1.35;
+const BATTLE_SCALE = 1.6;
 /* bullet tracer from Maya's gun hand toward an enemy */
 function shoot(M, e) {
-  const tx = e.x + e.ox, ty = e.y - 40 * e.def.s, a = Math.atan2(ty - (M.y - 52), tx - M.x), sx = M.x + Math.cos(a) * 38 * BATTLE_SCALE, sy = M.y - 52 * BATTLE_SCALE / 1.15 + Math.sin(a) * 20;
+  const tx = e.x + e.ox, ty = e.y - 40 * e.def.s, gy = M.y - 44 * BATTLE_SCALE, a = Math.atan2(ty - gy, tx - M.x);
+  const sx = M.x + Math.cos(a) * 28 * BATTLE_SCALE, sy = gy + Math.sin(a) * 12;
   Snd.sfx('shoot'); G.tracer(sx, sy, tx, ty); G.spark(sx, sy, '#ffd98a', 5, 90);
 }
 G.B = () => B;

@@ -54,7 +54,7 @@ function drawTitle(c) {
   const names = Object.keys(ANIM_NAMES), dur = 3, ai = Math.floor(G.t / dur) % names.length, an = names[ai], lt = G.t % dur;
   const di = isDirAnim(an) ? Math.floor(lt / (dur / 8)) % 8 : 6, x = W * .78, y = H * .76, fps = animFps(an);
   shadow(c, x, y, 40);
-  drawMaya(c, x, y, di, an, animFrame(an, lt, fps, an === 'turn' ? 'pp' : true, di), 1.7);
+  drawMaya(c, x, y, di, an, animFrame(an, lt, fps, an === 'turn' ? 'pp' : true, di), 2.1);
   c.font = '700 12px -apple-system,Helvetica,Arial,sans-serif'; c.textAlign = 'center'; c.fillStyle = '#9fc4ff';
   c.fillText(isDirAnim(an) ? `${ANIM_NAMES[an]} · ${DIR_NAMES[di]}` : ANIM_NAMES[an], x, y + 22);
 }
