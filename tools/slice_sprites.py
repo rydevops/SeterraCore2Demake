@@ -1,142 +1,138 @@
-"""Slice tools/maya_sheet_source.png into assets/maya.png + assets/maya_atlas.js.
+"""Build assets/maya.png + assets/maya_atlas.js from the pre-split frames in tools/maya_sprites/.
 
-This sheet has an opaque-ish light speckled background, so we:
-  1. key the background out (sprite pixels are near-opaque with a dark outline; effects are saturated),
-  2. read the 8 direction-group x-ranges from the header bars and the row y-bands from the content,
-  3. count frames per group from blue-hair peaks, snap centres with k-means, split pixels between neighbours,
-  4. pack every (animation, direction) into a grid atlas (cells are laid out row-major, 'start' per group).
+Input: tools/maya_sprites/<animation>/<DIR>/maya_<anim>_<dir>_frame_NN.png and metadata.json
+(frame order, direction names, per-frame duration, source rect on the original sheet).
 
-Every animation except Death is directional (S, SW, W, NW, N, NE, E, SE). The Death row is one long chain of
-figures that overflows its groups, so a left-facing fall sequence is hand-picked from it (the game mirrors it).
+The frames were matted from a light speckled background, so we:
+  * clean each frame (drop gray fringe / specks that touch the outside, keep enclosed light pixels like eye whites),
+  * drop broken frames (cut-off slivers, effect-only frames) that are far smaller than their group,
+  * anchor every frame by its torso, and keep each frame's vertical position relative to the animation's ground line,
+  * assemble Death from its coherent frames (the sheet's death row is one chain that the split cut into pieces),
+  * pack all animations/directions into a grid atlas (cells are row-major; `start` per group).
 Usage: python3 tools/slice_sprites.py
 """
 from PIL import Image
 from scipy import ndimage as ndi
 import numpy as np, json, os, statistics
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.abspath(__file__)); SRC = os.path.join(HERE, 'maya_sprites')
 CW, CH, FEET, COLS = 96, 120, 108, 40
-DIRS = ['s', 'sw', 'w', 'nw', 'n', 'ne', 'e', 'se']
-raw = np.array(Image.open(os.path.join(HERE, 'maya_sheet_source.png')).convert('RGBA')).astype(int)
-R, G_, B, AL = [raw[..., i] for i in range(4)]
-sat = raw[..., :3].max(2) - raw[..., :3].min(2)
-lum = R * .3 + G_ * .6 + B * .1
+DN = ['S', 'SW', 'W', 'NW', 'N', 'NE', 'E', 'SE']
+meta = json.load(open(os.path.join(SRC, 'metadata.json')))
+ANIMS = [('idle', 'idle'), ('walk', 'walk'), ('run', 'run'), ('attack_melee', 'melee'), ('attack_ranged', 'ranged'),
+         ('special', 'special'), ('hurt', 'hurt'), ('get_up', 'getup')]
+# Death: the zip's death frames are truncated (legs cut off), so the fall is extracted from the full sheet
+# (tools/maya_sheet_source.png): figures of the chained death row, left-facing, mirrored by the game for battle.
+DEATH_ALL = [296, 353, 400, 438, 492, 546, 598, 658, 716, 777]   # x centre of every figure in the chain
+DEATH_PICK = [0, 1, 2, 3, 4, 6, 8]
+DEATH_Y = (782, 876)
+SLIVER = .45          # a frame with less than this fraction of its group's median area or width is a cut-off sliver
 
-# ---- 1. background keying
-solid = AL >= 222
-effect = (AL >= 140) & (sat > 70) & (lum > 90)           # blue slashes, muzzle flashes
-gray = (sat < 35) & (lum > 115)                          # halo / speckle
-core = (solid | effect) & ~gray
-outside = ndi.binary_propagation(~core & ((np.indices(core.shape)[0] == 0) | (np.indices(core.shape)[0] == core.shape[0] - 1) |
-                                           (np.indices(core.shape)[1] == 0) | (np.indices(core.shape)[1] == core.shape[1] - 1)), mask=~core)
-keep = core | (solid & gray & ~outside)                   # enclosed light pixels (eye whites) stay
-lab, n = ndi.label(keep, structure=np.ones((3, 3)))
-sizes = ndi.sum(keep, lab, range(1, n + 1)); keep &= np.isin(lab, [i + 1 for i, s in enumerate(sizes) if s >= 10])
-img = raw[..., :3].astype(np.uint8)
-alpha = np.where(keep, np.where(solid, 255, AL), 0).astype(np.uint8)
-mask = alpha > 0
+def clean(path):
+    """-> (RGBA array tight-cropped, area) with the fringe removed"""
+    a = np.array(Image.open(path).convert('RGBA')).astype(int)
+    a = np.pad(a, ((2, 2), (2, 2), (0, 0)))
+    al = a[..., 3]; sat = a[..., :3].max(2) - a[..., :3].min(2); lum = a[..., 0] * .3 + a[..., 1] * .6 + a[..., 2] * .1
+    solid = al >= 200; effect = (al >= 110) & (sat > 70) & (lum > 90); gray = (sat < 35) & (lum > 115)
+    core = (solid | effect) & ~gray
+    seed = np.zeros_like(core); seed[0, :] = seed[-1, :] = seed[:, 0] = seed[:, -1] = True
+    outside = ndi.binary_propagation(seed & ~core, mask=~core)
+    keep = core | (solid & gray & ~outside)
+    lab, n = ndi.label(keep, structure=np.ones((3, 3)))
+    if n:
+        sizes = ndi.sum(keep, lab, range(1, n + 1)); keep &= np.isin(lab, [i + 1 for i, s in enumerate(sizes) if s >= max(6, .012 * sizes.max())])
+    out = np.zeros(a.shape, np.uint8); out[..., :3] = a[..., :3]; out[..., 3] = np.where(keep, np.where(solid, 255, al), 0)
+    # keep only what is near the main figure (removes specks / matte lines far away from it, keeps slash arcs)
+    lab, n = ndi.label(out[..., 3] > 0, structure=np.ones((3, 3)))
+    if n > 1:
+        sizes = ndi.sum(out[..., 3] > 0, lab, range(1, n + 1)); big = lab == (int(np.argmax(sizes)) + 1)
+        near = ndi.binary_dilation(big, iterations=10)
+        out[..., 3] = np.where(np.isin(lab, np.unique(lab[near & (lab > 0)])), out[..., 3], 0)
+    ys, xs = np.where(out[..., 3] > 0)
+    crop = out[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    return crop, int((crop[..., 3] > 0).sum()), int(ys.min()) - 2      # offset of the crop inside the original frame
 
-# ---- 2. layout
-header = [(109, 252), (293, 446), (484, 607), (650, 786), (826, 947), (990, 1124), (1168, 1289), (1319, 1439)]
-bounds = [92] + [(header[i][1] + header[i + 1][0]) // 2 for i in range(7)] + [raw.shape[1]]
-ROWS = [('idle', 54, 144), ('walk', 165, 250), ('run', 272, 354), ('melee', 375, 455), ('ranged', 474, 557),
-        ('special', 577, 659), ('hurt', 681, 765), ('death', 786, 872), ('getup', 899, 986)]
-FPS = {'idle': 5, 'walk': 10, 'run': 12, 'melee': 10, 'ranged': 10, 'special': 12, 'hurt': 8, 'death': 8, 'getup': 8}
-# Frames per direction group (S, SW, W, NW, N, NE, E, SE), counted by eye: the AI-drawn rows vary and
-# automatic counting (hair peaks / leg gaps) was unreliable around ponytails.
-COUNTS = {'idle': [4, 4, 3, 3, 3, 3, 3, 3], 'walk': [5, 5, 4, 5, 4, 5, 4, 4], 'run': [5, 5, 4, 5, 4, 5, 4, 4],
-          'melee': [5, 4, 4, 4, 4, 4, 4, 4], 'ranged': [5, 4, 4, 4, 4, 4, 4, 4], 'special': [5, 5, 4, 5, 4, 5, 4, 4],
-          'hurt': [4, 4, 3, 3, 3, 3, 3, 3], 'getup': [4, 4, 3, 4, 4, 4, 4, 3]}
-# Death: left-facing fall sequence picked from the chained figures (centres measured from the sheet)
-DEATH_ALL = [296, 353, 400, 438, 492, 546, 598, 658, 716, 777]   # every figure in the chain (for the pixel split)
-DEATH_PICK = [0, 1, 2, 3, 4, 6, 8]                                # frames of the sequence we keep
+def col_gap(img):
+    occ = (img[..., 3] > 0).any(0); xs = np.where(occ)[0]; inner = occ[xs.min():xs.max() + 1]; g = best = 0
+    for v in inner:
+        if not v: g += 1; best = max(best, g)
+        else: g = 0
+    return best
 
-def hair_columns(y0, y1, x0, x1):
-    s = raw[y0:y1, x0:x1]
-    m = (s[..., 3] >= 120) & (s[..., 2] > 90) & (s[..., 0] < 80) & (s[..., 1] < 120) & (s[..., 2] > s[..., 0] + 55)
-    return np.convolve(m.sum(0).astype(float), np.ones(5) / 5, 'same')
+def load_group(anim, d):
+    out = []
+    for fn in meta['animations'][anim][d]:
+        e = meta['frames'][fn]; img, area, oy = clean(os.path.join(SRC, e['file']))
+        r = e['source_rect']
+        out.append({'img': img, 'area': area, 'w': img.shape[1], 'bottom': r['y'] + oy + img.shape[0]})   # sheet y below the last row
+    return out
 
-def peaks(h, x0, sep=22, rel=.3):
-    top = h.max(); out = []
-    for i in range(2, len(h) - 2):
-        if h[i] >= max(4, rel * top) and h[i] >= h[i - 1] and h[i] > h[i + 1]:
-            if out and i - out[-1][0] < sep:
-                if h[i] > out[-1][1]: out[-1] = (i, h[i])
-            else: out.append((i, h[i]))
-    return [x0 + p for p, _ in out]
-
-def kmeans_x(centres, m, x0):
-    w = m.sum(0).astype(float); xs = np.arange(x0, x0 + m.shape[1]); c = np.array(centres, float)
-    for _ in range(8):
-        own = np.abs(xs[:, None] - c[None, :]).argmin(1)
-        for j in range(len(c)):
-            k = own == j
-            if w[k].sum() > 0: c[j] = (xs[k] * w[k]).sum() / w[k].sum()
-    return c
-
-frames = []          # (anim, dir, index, RGBA cell array)
-info = {}
-
-def make_cell(m_crop, x_off, y_off, own_cols, anchor, base):
+def to_cell(f, base):
+    img = f['img']; h, w = img.shape[:2]
+    ys = np.where(img[..., 3] > 0)[0]; top = ys.min()
+    mid = img[top + 18: top + 60, :, 3] > 0; cols = np.where(mid.any(0))[0]
+    cx = int(round(cols.mean())) if len(cols) else w // 2           # torso anchor
     cell = np.zeros((CH, CW, 4), np.uint8)
-    for ox in range(-CW // 2, CW // 2):
-        x = anchor + ox - x_off
-        if not (0 <= x < m_crop.shape[1]) or not own_cols[x]: continue
-        for oy in range(CH):
-            y = base - FEET + oy - y_off
-            if 0 <= y < m_crop.shape[0] and m_crop[y, x]:
-                cell[oy, ox + CW // 2, :3] = img[y + y_off, x + x_off]; cell[oy, ox + CW // 2, 3] = alpha[y + y_off, x + x_off]
+    y0 = FEET - (base - f['bottom']) - h                      # keep the frame's height relative to the ground line
+    x0 = CW // 2 - cx
+    for yy in range(h):
+        for xx in range(w):
+            ty, tx = y0 + yy, x0 + xx
+            if 0 <= ty < CH and 0 <= tx < CW and img[yy, xx, 3]: cell[ty, tx] = img[yy, xx]
     return cell
 
-for name, ry0, ry1 in ROWS:
-    y0, y1 = ry0 - 4, ry1 + 4
-    if name == 'death':          # single left-facing strip
-        x0, x1 = 277, 760; m = mask[y0:y1, x0:x1]
-        cs = np.array(DEATH_ALL, float); xs = np.arange(x0, x1); own = np.abs(xs[:, None] - cs[None, :]).argmin(1)
-        base = int(statistics.median([np.where(m[:, own == j].any(1))[0].max() + y0 for j in DEATH_PICK]))
-        cells = []
-        for j in DEATH_PICK:
-            k = own == j; sel = m[:, k]; cols = np.where(sel.any(0))[0]
-            anchor = int(round(x0 + np.where(k)[0][cols].mean())) if len(cols) else int(cs[j])
-            cells.append(make_cell(m, x0, y0, k, anchor, base))
-        info[name] = {'dir': False, 'n': len(cells), 'face': 'left'}
-        frames.append((name, None, cells)); continue
-    counts, groups = [], []
-    work = []
-    for d in range(8):
-        x0, x1 = bounds[d], bounds[d + 1]
-        m = mask[y0:y1, x0:x1]; n_f = COUNTS[name][d]
-        cols = np.where(m.any(0))[0]; lo, hi = cols.min(), cols.max() + 1
-        init = [x0 + lo + (i + .5) * (hi - lo) / n_f for i in range(n_f)]
-        cs = kmeans_x(init, m, x0)
-        xs = np.arange(x0, x1); own = np.abs(xs[:, None] - cs[None, :]).argmin(1)
-        work.append((m, x0, cs, own))
-    bottoms = [np.where(m[:, own == j].any(1))[0].max() + y0 for m, x0, cs, own in work for j in range(len(cs)) if m[:, own == j].any()]
-    base = int(statistics.median(bottoms))
-    for d, (m, x0, cs, own) in enumerate(work):
-        cells = []
-        for j in range(len(cs)):
-            k = own == j; sel = m[:, k]; ys = np.where(sel.any(1))[0]
-            top = ys.min() if len(ys) else 0
-            tb = m[top + 18: top + 60, :] & k[None, :]; cols = np.where(tb.any(0))[0]
-            anchor = int(round(x0 + cols.mean())) if len(cols) else int(round(cs[j]))
-            cells.append(make_cell(m, x0, y0, k, anchor, base))
-        groups.append(cells)
-    frames.append((name, 'dir', groups))
+atlas_info, cells, report = {}, [], []
+FPS = {}
+for anim, key in ANIMS:
+    groups = {d: load_group(anim, d) for d in DN}
+    med = statistics.median(f['area'] for g in groups.values() for f in g)
+    base = int(statistics.median(f['bottom'] for g in groups.values() for f in g))
+    starts, ns = [], []
+    for d in DN:
+        g = groups[d]; gm = statistics.median(f['area'] for f in g); gw = statistics.median(f['w'] for f in g)
+        gh = statistics.median(f['img'].shape[0] for f in g)
+        # integrity: cut-off figures (too narrow/short/small) and figures split in two by a gap are dropped
+        kept = [f for f in g if f['area'] >= SLIVER * gm and .7 * gw <= f['w'] <= 1.3 * gw and f['img'].shape[0] >= .85 * gh and col_gap(f['img']) < 2]
+        if len(kept) < 3:      # small group: keep the best available (still no split / sliver frames)
+            kept = [f for f in g if f['area'] >= SLIVER * gm and f['w'] >= .5 * gw and col_gap(f['img']) < 2][:5]
+        if len(kept) < len(g): report.append(f'{key} {d}: dropped {len(g) - len(kept)} cut-off frame(s)')
+        starts.append(len(cells)); ns.append(len(kept)); cells += [to_cell(f, base) for f in kept]
+    atlas_info[key] = {'dir': True, 'n': ns, 'start': starts}
+    dur = [meta['frames'][fn]['duration_ms'] for d in DN for fn in meta['animations'][anim][d]]
+    FPS[key] = round(1000 / (sum(dur) / len(dur)), 1)
 
-# ---- 3. pack
-cells_all, idx = [], 0
-for name, kind, data in frames:
-    if kind == 'dir':
-        starts, ns = [], []
-        for cells in data:
-            starts.append(idx); ns.append(len(cells)); cells_all += cells; idx += len(cells)
-        info[name] = {'dir': True, 'n': ns, 'start': starts}
-    else:
-        info[name]['start'] = idx; cells_all += data; idx += len(data)
-rows = (len(cells_all) + COLS - 1) // COLS
+def death_frames():
+    """left-facing fall from the full sheet: key the background, split the chain between figures"""
+    raw = np.array(Image.open(os.path.join(HERE, 'maya_sheet_source.png')).convert('RGBA')).astype(int)
+    y0, y1 = DEATH_Y; x0, x1 = 277, 800
+    sub = raw[y0:y1, x0:x1]
+    sub = np.pad(sub, ((2, 2), (2, 2), (0, 0)))
+    al = sub[..., 3]; sat = sub[..., :3].max(2) - sub[..., :3].min(2); lum = sub[..., 0] * .3 + sub[..., 1] * .6 + sub[..., 2] * .1
+    solid = al >= 222; effect = (al >= 140) & (sat > 70) & (lum > 90); gray = (sat < 35) & (lum > 115)
+    core = (solid | effect) & ~gray
+    seed = np.zeros_like(core); seed[0, :] = seed[-1, :] = seed[:, 0] = seed[:, -1] = True
+    outside = ndi.binary_propagation(seed & ~core, mask=~core)
+    keep = core | (solid & gray & ~outside)
+    lab, n = ndi.label(keep, structure=np.ones((3, 3)))
+    sizes = ndi.sum(keep, lab, range(1, n + 1)); keep &= np.isin(lab, [i + 1 for i, s_ in enumerate(sizes) if s_ >= 10])
+    rgba = np.zeros(sub.shape, np.uint8); rgba[..., :3] = sub[..., :3]; rgba[..., 3] = np.where(keep, np.where(solid, 255, al), 0)
+    xs = np.arange(x0 - 2, x1 + 2); cs = np.array(DEATH_ALL, float); own = np.abs(xs[:, None] - cs[None, :]).argmin(1)
+    out = []
+    for j in DEATH_PICK:
+        part = rgba.copy(); part[:, own != j, 3] = 0
+        ys, xx = np.where(part[..., 3] > 0)
+        out.append({'img': part[ys.min():ys.max() + 1, xx.min():xx.max() + 1], 'bottom': y0 - 2 + int(ys.max()) + 1})
+    return out
+
+frames = death_frames()
+base = int(statistics.median(f['bottom'] for f in frames))
+atlas_info['death'] = {'dir': False, 'n': len(frames), 'start': len(cells), 'face': 'left'}
+cells += [to_cell(f, base) for f in frames]
+FPS['death'] = round(1000 / meta['frames'][meta['animations']['death']['SW'][0]]['duration_ms'], 1)
+
+rows = (len(cells) + COLS - 1) // COLS
 atlas = np.zeros((rows * CH, COLS * CW, 4), np.uint8)
-for i, c in enumerate(cells_all): atlas[(i // COLS) * CH:(i // COLS + 1) * CH, (i % COLS) * CW:(i % COLS + 1) * CW] = c
+for i, c in enumerate(cells): atlas[(i // COLS) * CH:(i // COLS + 1) * CH, (i % COLS) * CW:(i % COLS + 1) * CW] = c
 Image.fromarray(atlas).save(os.path.join(HERE, '..', 'assets', 'maya.png'), optimize=True)
-js = 'window.MAYA_ATLAS=' + json.dumps({'cw': CW, 'ch': CH, 'feet': FEET, 'cols': COLS, 'anims': info, 'fps': FPS}, separators=(',', ':')) + ';\n'
+js = 'window.MAYA_ATLAS=' + json.dumps({'cw': CW, 'ch': CH, 'feet': FEET, 'cols': COLS, 'anims': atlas_info, 'fps': FPS}, separators=(',', ':')) + ';\n'
 open(os.path.join(HERE, '..', 'assets', 'maya_atlas.js'), 'w').write(js)
-print(js); print(atlas.shape, len(cells_all), 'cells')
+print('\n'.join(report)); print(js); print(atlas.shape, len(cells), 'cells')
