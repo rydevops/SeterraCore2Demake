@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Maya Seterra Core</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="description" content="A 2D RPG starring Maya: explore, fight random battles, defeat the Stone Guardian.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Maya RPG">
+<meta name="format-detection" content="telephone=no">
+<meta name="theme-color" content="#0b1020">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="stats">
+    <div class="nm"><b>MAYA</b> <span id="hlv">Lv 1</span> <span id="hgold">0G</span></div>
+    <div class="bar hp"><i id="hpb"></i><span id="hpt"></span></div>
+    <div class="bar ep"><i id="epb"></i><span id="ept"></span></div>
+  </div>
+  <div id="tr"><button id="btnMenu" aria-label="Menu">☰</button><canvas id="mini" width="64" height="48"></canvas></div>
+</div>
+
+<div id="touch" class="hidden">
+  <div id="stickzone"></div>
+  <div id="stickbase"><div id="stickknob"></div></div>
+  <div id="btns"><button id="bRun">RUN</button><button id="bS">S</button><button id="bA">A</button></div>
+</div>
+
+<div id="bui" class="hidden"><div id="bmsg" class="hidden"></div><div id="bcmd"></div></div>
+
+<div id="dlg" class="hidden"><div id="dtxt"></div><div id="dch"></div></div>
+<div id="menu" class="overlay hidden"><div class="panel"><div id="mstat"></div><div id="mbtns"></div></div></div>
+
+<div id="title" class="overlay">
+  <div class="tbox">
+    <h1>MAYA</h1><p class="sub">SETERRA CORE · DEMAKE</p>
+    <div id="tbtns"><button id="tNew">New Game</button><button id="tCont" class="hidden">Continue</button></div>
+    <p id="thint"></p>
+  </div>
+  <small id="ver"></small>
+</div>
+
+<div id="toast" class="hidden"></div>
+<div id="fade"></div>
+<div id="rotate"><div><div class="ico">📱</div><p>Please rotate your device to <b>landscape</b></p></div></div>
+
+<script src="version.js"></script>
+<script src="core.js"></script>
+<script src="art.js"></script>
+<script src="world.js"></script>
+<script src="battle.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
