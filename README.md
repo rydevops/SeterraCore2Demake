@@ -21,7 +21,7 @@ Built with plain HTML/CSS/JS + `<canvas>` (no build step). The game lives at the
 In battle, tap the command buttons; tap an enemy (or its button) to target.
 
 ## How the sprite sheet is used
-`tools/maya_sheet_source.png` is sliced by `tools/slice_sprites.py` into `assets/maya.png` (a packed grid of 96×120 cells) and `assets/maya_atlas.js` (start index + frame count per animation/direction). The sheet has a speckled light background, so the slicer keys it out (near-opaque sprite pixels + saturated effects), takes direction ranges from the header bars, and splits frames with k-means. Frame counts per group are counted by eye and listed in the script (they vary, e.g. Idle 4/3, Walk 4–5).
+`tools/maya_sprites/` holds the pre-split frames and `metadata.json` (frame order, directions, per-frame duration). `tools/slice_sprites.py` cleans them (gray matte fringe, specks), drops cut-off or split frames, anchors each frame by its torso, and packs everything into `assets/maya.png` (a grid of 96×120 cells) plus `assets/maya_atlas.js` (start index and frame count per animation/direction, and fps from the metadata durations). The split Death frames are truncated, so the fall is extracted from the full sheet (`tools/maya_sheet_source.png`) instead.
 
 | Sheet row | In game |
 |---|---|
