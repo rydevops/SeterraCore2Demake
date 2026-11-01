@@ -6,9 +6,11 @@ const SOLID = new Set([T.FOREST, T.WATER, T.ROCK, T.ROOF, T.WALL, T.PILLAR, T.CA
 const MW = 64, MH = 48, TS = 32;
 const TOWN_RECT = { x0: 3, y0: 3, x1: 21, y1: 17 };
 const SPAWN = { tx: 11, ty: 12 };
-const WORLD_SCALE = .8;
+const WORLD_SCALE = .6;
 /* one-shot (or looping) action animation for the overworld player */
-const mkAct = (anim, extra = .05, loop = false) => ({ anim, t: 0, fps: animFps(anim), loop, dur: loop ? 1.3 : animDur(anim) + extra });
+const mkAct = (anim, extra = .05, loop = false, next = null, dir = null) => ({ anim, t: 0, fps: animFps(anim), loop, dir, next, dur: loop ? 1.3 : animDur(anim) + extra });
+/* waking up: Death played backwards, then the Get Up strip */
+const wakeUp = () => mkAct(ANIM.rise, .15, false, mkAct(ANIM.getup, .3));
 
 function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function makeNoise(seed) {
@@ -177,7 +179,7 @@ G.world = {
   },
   async update(dt) {
     const p = G.p; p.t += dt; p.comboT -= dt;
-    if (p.act) { p.act.t += dt; if (p.act.t >= p.act.dur) p.act = null; }
+    if (p.act) { p.act.t += dt; if (p.act.t >= p.act.dur) p.act = p.act.next; }
     if (G.uiOpen || G.busy) { p.moving = false; return; }
     if (G.consume('menuPress')) { G.openMenu(); return; }
     if (p.act) return;
@@ -222,7 +224,7 @@ G.world = {
     if (r === 0 && !full) {
       if (pl.gold < 20) await G.say('Not enough gold.');
       else { pl.gold -= 20; await G.fade(1, 500); pl.hp = pl.maxhp; pl.ep = pl.maxep; G.updateHud(); Snd.sfx('heal');
-        p.act = mkAct(ANIM.getup, .3); await G.fade(0, 500); G.save(); G.toast('Rested and saved. HP/EP restored!'); }
+        p.act = wakeUp(); await G.fade(0, 500); G.save(); G.toast('Rested and saved. HP/EP restored!'); }
     }
     G.busy = false;
   },
@@ -253,7 +255,7 @@ G.world = {
   respawn() {            // after a defeat
     const p = G.p, pl = G.pl; p.x = SPAWN.tx * TS + 16; p.y = SPAWN.ty * TS + 16; p.dir = D.DOWN; p.moving = false;
     pl.hp = Math.ceil(pl.maxhp / 2); pl.ep = Math.ceil(pl.maxep / 2); pl.gold = Math.floor(pl.gold / 2); G.updateHud();
-    p.act = mkAct(ANIM.getup, .5); G.save();
+    p.act = wakeUp(); G.save();
   },
   draw(c) {
     const p = G.p, W = G.VW, H = G.VH;
@@ -276,10 +278,10 @@ G.world = {
   },
   drawPlayer(c) {
     const p = G.p; let anim = ANIM.idle, fps = animFps('idle'), loop = true, t = p.t, dir = p.dir;
-    if (p.act) { anim = p.act.anim; fps = p.act.fps; loop = p.act.loop; t = p.act.t; }
+    if (p.act) { anim = p.act.anim; fps = p.act.fps; loop = p.act.loop; t = p.act.t; if (p.act.dir !== null) dir = p.act.dir; }
     else if (p.moving) { anim = p.run ? ANIM.run : ANIM.walk; fps = p.run ? animFps('run') : 8.5; }
     shadow(c, p.x, p.y, 15);
-    drawMaya(c, p.x, p.y, dir, anim, animFrame(anim, t, fps, loop, dir), WORLD_SCALE, 1, LEFTISH.has(dir));
+    drawMaya(c, p.x, p.y, dir, anim, animFrame(anim, t, fps, loop, dir), WORLD_SCALE);
   },
   drawMini() {
     const m = $('mini').getContext('2d'); m.drawImage(G.miniBase, 0, 0);
