@@ -12,40 +12,45 @@ const lerp = (a, b, t) => a + (b - a) * t;
 
 /* ---------- Sprite atlas (see assets/maya_atlas.js, built by tools/slice_sprites.py) ---------- */
 const MA = window.MAYA_ATLAS;
-// idle/walk/run/melee/ranged have 8 directions; special/hurt/death/turn are single strips facing right;
-// 'getup' is the death strip played backwards.
-const ANIM = { idle: 'idle', walk: 'walk', run: 'run', melee: 'melee', ranged: 'ranged', special: 'special', hurt: 'hurt', death: 'death', getup: 'getup', turn: 'turn' };
-const ANIM_NAMES = { idle: 'Idle', walk: 'Walk', run: 'Run', melee: 'Attack 1 · Melee', ranged: 'Attack 2 · Ranged', special: 'Special', hurt: 'Hit / Hurt', death: 'Death', getup: 'Get Up', turn: 'Turn' };
+// Directional strips: idle walk run melee ranged special hurt getup. 'death' is one left-facing strip (mirrored
+// for right-facing views). 'rise' = death played backwards. 'turn' = Idle spun through all 8 directions.
+const ANIM = { idle: 'idle', walk: 'walk', run: 'run', melee: 'melee', ranged: 'ranged', special: 'special', hurt: 'hurt', death: 'death', rise: 'rise', getup: 'getup', turn: 'turn' };
+const ANIM_NAMES = { idle: 'Idle', walk: 'Walk', run: 'Run', melee: 'Attack 1 · Melee', ranged: 'Attack 2 · Ranged', special: 'Special', hurt: 'Hurt', death: 'Death', rise: 'Rise (Death reversed)', getup: 'Get Up', turn: 'Turn' };
 // direction indices follow the atlas order: S, SW, W, NW, N, NE, E, SE
 const D = { DOWN: 0, DL: 1, L: 2, UL: 3, U: 4, UR: 5, R: 6, DR: 7 };
 const DIR_NAMES = ['S (Down)', 'SW (Down-Left)', 'W (Left)', 'NW (Up-Left)', 'N (Up)', 'NE (Up-Right)', 'E (Right)', 'SE (Down-Right)'];
 const SECT = [6, 7, 0, 1, 2, 3, 4, 5];            // angle sector (0 = east, clockwise on screen) -> atlas dir
 const dirOf = (dx, dy) => SECT[(Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) + 8) % 8];
 const OPP = d => (d + 4) % 8;
-const LEFTISH = new Set([D.DL, D.L, D.UL]);
+const RIGHTISH = new Set([D.UR, D.R, D.DR]);
 G.sheet = new Image();
 G.sheet.src = 'assets/maya.png';
 
-const animSrc = a => MA.anims[a === 'getup' ? 'death' : a];
-const animFps = a => MA.fps[a === 'getup' ? 'death' : a];
-const isDirAnim = a => animSrc(a).dir;
+const animKey = a => (a === 'rise' ? 'death' : a === 'turn' ? 'idle' : a);
+const animSrc = a => MA.anims[animKey(a)];
+const animFps = a => a === 'turn' ? 10 : MA.fps[animKey(a)];
+const isDirAnim = a => a === 'turn' || animSrc(a).dir;
 const animCount = (a, dir = 0) => { const i = animSrc(a); return i.dir ? i.n[dir] : i.n; };
-/* frame index at time t. loop: true | false (hold last frame) | 'pp' (ping-pong) */
+/* frame index at time t. loop: true | false (hold last frame) | 'pp' (ping-pong). 'turn' returns the spin step. */
 function animFrame(anim, t, fps, loop = true, dir = 0) {
-  const n = animCount(anim, dir), k = Math.floor(t * fps);
-  if (anim === 'getup') return n - 1 - Math.min(n - 1, k);
+  const k = Math.floor(t * fps);
+  if (anim === 'turn') return k;
+  const n = animCount(anim, dir);
+  if (anim === 'rise') return n - 1 - Math.min(n - 1, k);
   if (loop === 'pp') { const m = Math.max(1, 2 * n - 2), j = k % m; return j < n ? j : m - j; }
   return loop ? k % n : Math.min(n - 1, k);
 }
 /* total play time of a one-shot animation in seconds */
 const animDur = (a, fps = animFps(a), dir = 0) => animCount(a, dir) / fps;
-/* draw Maya; feet at (x, y). Single-strip animations face right, so flip them for left-facing dirs. */
-function drawMaya(c, x, y, dir, anim, frame, scale, alpha = 1, flip = false) {
+/* draw Maya; feet at (x, y). The Death strip faces left, so it is mirrored for right-facing views. */
+function drawMaya(c, x, y, dir, anim, frame, scale, alpha = 1) {
   if (!G.sheet.complete || !G.sheet.naturalWidth) return;
-  const i = animSrc(anim), col = i.dir ? dir * MA.group + frame : frame, w = MA.cw * scale, h = MA.ch * scale;
+  if (anim === 'turn') { dir = frame % 8; frame = (frame >> 3) % animCount('idle', dir); }
+  const i = animSrc(anim), idx = (i.dir ? i.start[dir] : i.start) + Math.min(frame, (i.dir ? i.n[dir] : i.n) - 1);
+  const w = MA.cw * scale, h = MA.ch * scale, flip = i.face === 'left' && RIGHTISH.has(dir);
   c.save(); c.globalAlpha = alpha; c.translate(x, y);
-  if (flip && !i.dir) c.scale(-1, 1);
-  c.drawImage(G.sheet, col * MA.cw, i.row * MA.ch, MA.cw, MA.ch, -w / 2, -MA.feet * scale, w, h);
+  if (flip) c.scale(-1, 1);
+  c.drawImage(G.sheet, (idx % MA.cols) * MA.cw, Math.floor(idx / MA.cols) * MA.ch, MA.cw, MA.ch, -w / 2, -MA.feet * scale, w, h);
   c.restore();
 }
 function shadow(c, x, y, r) {

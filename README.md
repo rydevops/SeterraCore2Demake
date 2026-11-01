@@ -21,20 +21,20 @@ Built with plain HTML/CSS/JS + `<canvas>` (no build step). The game lives at the
 In battle, tap the command buttons; tap an enemy (or its button) to target.
 
 ## How the sprite sheet is used
-`tools/maya_sheet_source.png` is sliced by `tools/slice_sprites.py` into `assets/maya.png` and `assets/maya_atlas.js`. The script reads each direction group's range from the label bars, counts the real frames by hair blobs, and strips the panel borders. Frame counts differ per direction (e.g. Down walk has 6, Up walk has 5, Down idle has 4 vs 3 elsewhere, death has 7).
+`tools/maya_sheet_source.png` is sliced by `tools/slice_sprites.py` into `assets/maya.png` (a packed grid of 96×120 cells) and `assets/maya_atlas.js` (start index + frame count per animation/direction). The sheet has a speckled light background, so the slicer keys it out (near-opaque sprite pixels + saturated effects), takes direction ranges from the header bars, and splits frames with k-means. Frame counts per group are counted by eye and listed in the script (they vary, e.g. Idle 4/3, Walk 4–5).
 
-| Sheet strip | In game |
+| Sheet row | In game |
 |---|---|
-| Idle / Walk / Run (8 directions) | Overworld movement and idle in all 8 directions; Run is also how she dashes in and out of melee |
-| Attack 1 – Melee (8 dir) | **Strike** in battle (dash in, hit, run back); **A** on the map |
-| Attack 2 – Ranged (8 dir) | **Shoot** (2 shots) and **Barrage** (3 volleys, hits all) with bullet tracers; **A** on the map |
-| Special | **Tech: Overdrive**, Guard aura, **S** on the map |
-| Hit / Hurt | Taking damage |
-| Death | Maya is defeated |
-| Death (reversed) | Get Up – waking at the Inn / after a defeat |
-| Turn | Victory twirl, using items, opening chests |
+| Idle / Walk / Run (8 dir) | Overworld movement and idle; Run is also the dash in/out of melee |
+| Attack 1 – Melee (8 dir) | **Strike** in battle; **A** on the map |
+| Attack 2 – Ranged (8 dir) | **Shoot** (2 shots) and **Barrage** (3 volleys, hits all) with tracers; **A** on the map |
+| Special (8 dir) | **Tech: Overdrive** in battle, **S** on the map |
+| Hurt (8 dir) | Taking damage; the Guard brace |
+| Death | Maya is defeated (the sheet's death chain is left-facing, so it is mirrored for the battle view) |
+| Death reversed + Get Up (8 dir) | Waking at the Inn / after a defeat |
+| Idle spun through all 8 directions | Victory twirl, using items, opening chests |
 
-The title screen cycles through every strip and direction.
+The title screen cycles through every animation and direction.
 
 ## PWA updates
 `sw.js` is **network‑first**: every launch (and every resume from background) re-checks the server, installs a new version if found, swaps caches, and reloads the game at the next safe moment (never mid‑battle). Offline play falls back to the cache.

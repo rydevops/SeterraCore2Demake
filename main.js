@@ -52,11 +52,11 @@ function drawTitle(c) {
   c.fillStyle = 'rgba(255,255,255,.7)'; for (let i = 0; i < 50; i++) c.fillRect((i * 137) % W, (i * 71) % (H * .6), 1.5, 1.5);
   c.fillStyle = '#0a1d1d'; c.beginPath(); c.moveTo(0, H); for (let x = 0; x <= W; x += 24) c.lineTo(x, H - 70 - 20 * Math.sin(x * .03)); c.lineTo(W, H); c.fill();
   const names = Object.keys(ANIM_NAMES), dur = 3, ai = Math.floor(G.t / dur) % names.length, an = names[ai], lt = G.t % dur;
-  const di = isDirAnim(an) ? Math.floor(lt / (dur / 8)) % 8 : 6, x = W * .78, y = H * .76, fps = animFps(an);
+  const di = (isDirAnim(an) && an !== 'turn') ? Math.floor(lt / (dur / 8)) % 8 : 6, x = W * .78, y = H * .76, fps = animFps(an);
   shadow(c, x, y, 40);
-  drawMaya(c, x, y, di, an, animFrame(an, lt, fps, an === 'turn' ? 'pp' : true, di), 2.1);
+  drawMaya(c, x, y, di, an, animFrame(an, lt, fps, true, di), 1.55);
   c.font = '700 12px -apple-system,Helvetica,Arial,sans-serif'; c.textAlign = 'center'; c.fillStyle = '#9fc4ff';
-  c.fillText(isDirAnim(an) ? `${ANIM_NAMES[an]} · ${DIR_NAMES[di]}` : ANIM_NAMES[an], x, y + 22);
+  c.fillText((isDirAnim(an) && an !== 'turn') ? `${ANIM_NAMES[an]} · ${DIR_NAMES[di]}` : ANIM_NAMES[an], x, y + 22);
 }
 
 /* ---------- main loop ---------- */

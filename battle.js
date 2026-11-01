@@ -1,11 +1,11 @@
 'use strict';
 /* Turn-based battle: Maya uses every animation (run in/out, 3 attacks, special, damage, fall, victory) */
 let B = null;
-const BATTLE_SCALE = 1.6;
+const BATTLE_SCALE = 1.25;
 /* bullet tracer from Maya's gun hand toward an enemy */
 function shoot(M, e) {
-  const tx = e.x + e.ox, ty = e.y - 40 * e.def.s, gy = M.y - 44 * BATTLE_SCALE, a = Math.atan2(ty - gy, tx - M.x);
-  const sx = M.x + Math.cos(a) * 28 * BATTLE_SCALE, sy = gy + Math.sin(a) * 12;
+  const tx = e.x + e.ox, ty = e.y - 40 * e.def.s, gy = M.y - 50 * BATTLE_SCALE, a = Math.atan2(ty - gy, tx - M.x);
+  const sx = M.x + Math.cos(a) * 26 * BATTLE_SCALE, sy = gy + Math.sin(a) * 12;
   Snd.sfx('shoot'); G.tracer(sx, sy, tx, ty); G.spark(sx, sy, '#ffd98a', 5, 90);
 }
 G.B = () => B;
@@ -150,15 +150,15 @@ async function perform(a) {
       await G.wait(300); IDLE(M); break;
     }
     case 'tech': {
-      const e = a.t; msg('Special Tech: Overdrive!'); pl.ep -= 10; G.updateHud(); setAnim(M, ANIM.special, D.R, 9, false); Snd.sfx('tech');
+      const e = a.t; msg('Special Tech: Overdrive!'); pl.ep -= 10; G.updateHud(); setAnim(M, ANIM.special, D.R, 6, false); Snd.sfx('tech');
       G.ring(M.x, M.y - 10, 70, '#7fd0ff', .8); await G.wait(450); G.ring(M.x, M.y - 10, 100, '#bfe9ff', .7); await G.wait(380);
       G.bolt(e.x, e.y - 20); G.ring(e.x, e.y, 80, '#9be7ff', .6); G.shake = 14; hurtEnemy(e, 3.6, '#9be7ff'); await G.wait(250); hurtEnemy(e, 1.2, '#9be7ff'); await G.wait(500);
       IDLE(M); break;
     }
-    case 'guard': msg('Maya braces for impact.'); B.guard = true; pl.ep = Math.min(pl.maxep, pl.ep + 3); G.updateHud(); setAnim(M, ANIM.special, D.R, 1, false, 4);   // hold an aura frame of the Special strip
+    case 'guard': msg('Maya braces for impact.'); B.guard = true; pl.ep = Math.min(pl.maxep, pl.ep + 3); G.updateHud(); setAnim(M, ANIM.hurt, D.R, 1, false, 1);   // brace: hold a Hurt frame
       G.ring(M.x, M.y - 30, 44, '#7fd0ff', .6); Snd.sfx('ui'); await G.wait(650); break;
     case 'item': {
-      setAnim(M, ANIM.turn, D.R, 10, 'pp'); pl.items[a.k]--; Snd.sfx('heal');
+      setAnim(M, ANIM.turn, D.R, 12, true); pl.items[a.k]--; Snd.sfx('heal');
       if (a.k === 'potion') { const h = Math.min(60, pl.maxhp - pl.hp); pl.hp += h; msg('Potion: +' + h + ' HP'); G.floatText(M.x, M.y - 110, '+' + h, '#6bff8f', true); }
       else { const h = Math.min(20, pl.maxep - pl.ep); pl.ep += h; msg('Ether: +' + h + ' EP'); G.floatText(M.x, M.y - 110, '+' + h + ' EP', '#7fd0ff', true); }
       G.updateHud(); G.ring(M.x, M.y - 10, 50, '#6bff8f', .7); await G.wait(900); IDLE(M); break;
@@ -201,7 +201,7 @@ async function endBattle(how) {
 }
 async function victory() {
   const M = B.maya, pl = G.pl; await G.wait(500);
-  msg('Victory!'); Snd.sfx('win'); setAnim(M, ANIM.turn, D.R, animFps('turn'), 'pp');
+  msg('Victory!'); Snd.sfx('win'); setAnim(M, ANIM.turn, D.R, 10, true);
   let exp = 0, gold = 0, drops = 0; for (const e of B.enemies) { exp += e.def.exp; gold += e.def.gold; if (Math.random() < .15 || e.def.boss) drops++; }
   pl.gold += gold; pl.items.potion += drops; const ups = G.gainExp(exp); G.updateHud();
   if (ups) { Snd.sfx('lvl'); G.floatText(M.x, M.y - 120, 'LEVEL UP!', '#ffd23f', true); G.ring(M.x, M.y - 10, 70, '#ffd23f', .9); }
