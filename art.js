@@ -101,12 +101,13 @@ function drawEnemy(c, e, t) {
 }
 
 /* ---------- Effects ---------- */
-const FX = G.fx = { parts: [], texts: [], rings: [], bolts: [], slashes: [] };
+const FX = G.fx = { parts: [], texts: [], rings: [], bolts: [], slashes: [], tracers: [] };
 G.spark = (x, y, col = '#fff', n = 12, sp = 160) => { for (let i = 0; i < n; i++) { const a = rand(0, TAU), s = rand(.3, 1) * sp;
   FX.parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 30, life: rand(.3, .6), max: .6, col, sz: rand(1.5, 3.5) }); } };
 G.floatText = (x, y, txt, col = '#fff', big = false) => FX.texts.push({ x, y, txt, col, life: 1, big });
 G.ring = (x, y, max, col, life = .5) => FX.rings.push({ x, y, max, col, life, l0: life });
 G.bolt = (x, y, col = '#9be7ff') => FX.bolts.push({ x, y, col, life: .35, seed: Math.random() * 99 });
+G.tracer = (x1, y1, x2, y2, col = '#ffd98a') => FX.tracers.push({ x1, y1, x2, y2, col, life: .16, l0: .16 });
 G.slash = (x, y, ang, col = '#fff') => FX.slashes.push({ x, y, ang, col, life: .22 });
 G.updateFx = dt => {
   FX.parts = FX.parts.filter(p => (p.life -= dt) > 0 && (p.x += p.vx * dt, p.y += p.vy * dt, p.vy += 360 * dt, true));
@@ -114,6 +115,7 @@ G.updateFx = dt => {
   FX.rings = FX.rings.filter(r => (r.life -= dt) > 0);
   FX.bolts = FX.bolts.filter(b => (b.life -= dt) > 0);
   FX.slashes = FX.slashes.filter(s => (s.life -= dt) > 0);
+  FX.tracers = FX.tracers.filter(t => (t.life -= dt) > 0);
 };
 G.drawFx = c => {
   for (const r of FX.rings) { const k = 1 - r.life / r.l0; c.globalAlpha = 1 - k; c.strokeStyle = r.col; c.lineWidth = 4 * (1 - k) + 1; c.beginPath(); c.ellipse(r.x, r.y, r.max * k, r.max * k * .45, 0, 0, TAU); c.stroke(); }
@@ -121,6 +123,8 @@ G.drawFx = c => {
     for (let i = 0; i < 8; i++) { y += 28; x = b.x + Math.sin(b.seed + i * 3.1 + G.t * 60) * 14; c.lineTo(x, y); } c.stroke(); c.shadowBlur = 0; }
   for (const s of FX.slashes) { const k = 1 - s.life / .22; c.globalAlpha = 1 - k; c.strokeStyle = s.col; c.lineWidth = 5 * (1 - k) + 1; c.beginPath();
     c.arc(s.x, s.y, 30, s.ang - .9 + k * .8, s.ang + .2 + k * .8); c.stroke(); }
+  for (const t of FX.tracers) { const k = 1 - t.life / t.l0; c.globalAlpha = 1 - k; c.strokeStyle = t.col; c.lineWidth = 2.5; c.shadowColor = t.col; c.shadowBlur = 8;
+    c.beginPath(); c.moveTo(lerp(t.x1, t.x2, Math.max(0, k - .35)), lerp(t.y1, t.y2, Math.max(0, k - .35))); c.lineTo(lerp(t.x1, t.x2, Math.min(1, k + .3)), lerp(t.y1, t.y2, Math.min(1, k + .3))); c.stroke(); c.shadowBlur = 0; }
   c.globalAlpha = 1;
   for (const p of FX.parts) { c.globalAlpha = clamp(p.life / p.max, 0, 1); c.fillStyle = p.col; c.fillRect(p.x, p.y, p.sz, p.sz); }
   c.globalAlpha = 1; c.textAlign = 'center'; c.lineJoin = 'round';

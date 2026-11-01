@@ -6,6 +6,9 @@ const SOLID = new Set([T.FOREST, T.WATER, T.ROCK, T.ROOF, T.WALL, T.PILLAR, T.CA
 const MW = 64, MH = 48, TS = 32;
 const TOWN_RECT = { x0: 3, y0: 3, x1: 21, y1: 17 };
 const SPAWN = { tx: 11, ty: 12 };
+const WORLD_SCALE = .68;
+/* one-shot (or looping) action animation for the overworld player */
+const mkAct = (anim, extra = .05, loop = false) => ({ anim, t: 0, fps: animFps(anim), loop, dur: loop ? 1.3 : animDur(anim) + extra });
 
 function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function makeNoise(seed) {
@@ -184,10 +187,10 @@ G.world = {
       if (n) { p.dir = dirOf(n.x - p.x, n.y - p.y); p.moving = false; G.busy = true; Snd.sfx('ui');
         await G.say('<b>Villager</b><br>' + n.dialog[n.i++ % n.dialog.length]); G.busy = false; return; }
       if (p.comboT <= 0) p.combo = 0;
-      const a = [ANIM.atk1, ANIM.atk2, ANIM.atk3][p.combo % 3]; Snd.sfx(['jab', 'kick', 'arc'][p.combo % 3]);
-      p.act = { anim: a, t: 0, dur: .46, fps: 8, loop: false }; p.combo++; p.comboT = 1.1; p.moving = false; return;
+      const a = [ANIM.melee, ANIM.ranged][p.combo % 2]; Snd.sfx(['jab', 'shoot'][p.combo % 2]);
+      p.act = mkAct(a); p.combo++; p.comboT = 1.1; p.moving = false; return;
     }
-    if (G.consume('sPress')) { p.act = { anim: ANIM.tech, t: 0, dur: .9, fps: 4, loop: false }; Snd.sfx('tech'); p.moving = false; return; }
+    if (G.consume('sPress')) { p.act = mkAct(ANIM.special, .25); Snd.sfx('tech'); p.moving = false; return; }
     p.moving = inp.m > 0; p.run = inp.run && p.moving;
     if (p.moving) {
       p.dir = dirOf(inp.x, inp.y);
@@ -219,7 +222,7 @@ G.world = {
     if (r === 0 && !full) {
       if (pl.gold < 20) await G.say('Not enough gold.');
       else { pl.gold -= 20; await G.fade(1, 500); pl.hp = pl.maxhp; pl.ep = pl.maxep; G.updateHud(); Snd.sfx('heal');
-        p.act = { anim: ANIM.getup, t: 0, dur: 1.2, fps: 2.6, loop: false }; await G.fade(0, 500); G.save(); G.toast('Rested and saved. HP/EP restored!'); }
+        p.act = mkAct(ANIM.getup, .3); await G.fade(0, 500); G.save(); G.toast('Rested and saved. HP/EP restored!'); }
     }
     G.busy = false;
   },
@@ -236,7 +239,7 @@ G.world = {
   },
   async openChest(c) {
     G.busy = true; c.open = true; G.flags['c_' + c.id] = 1; Snd.sfx('chest'); const p = G.p; p.moving = false;
-    p.dir = D.DOWN; p.act = { anim: ANIM.win, t: 0, dur: 1.3, fps: 5, loop: true };
+    p.dir = D.DOWN; p.act = mkAct(ANIM.turn, .6, 'pp');
     const l = c.loot, parts = []; if (l.gold) { G.pl.gold += l.gold; parts.push(l.gold + 'G'); }
     for (const k in (l.items || {})) { G.pl.items[k] += l.items[k]; parts.push(l.items[k] + '× ' + (k === 'potion' ? 'Potion' : 'Ether')); }
     G.updateHud(); await G.wait(900);
@@ -250,7 +253,7 @@ G.world = {
   respawn() {            // after a defeat
     const p = G.p, pl = G.pl; p.x = SPAWN.tx * TS + 16; p.y = SPAWN.ty * TS + 16; p.dir = D.DOWN; p.moving = false;
     pl.hp = Math.ceil(pl.maxhp / 2); pl.ep = Math.ceil(pl.maxep / 2); pl.gold = Math.floor(pl.gold / 2); G.updateHud();
-    p.act = { anim: ANIM.getup, t: 0, dur: 1.4, fps: 2.2, loop: false }; G.save();
+    p.act = mkAct(ANIM.getup, .5); G.save();
   },
   draw(c) {
     const p = G.p, W = G.VW, H = G.VH;
@@ -272,11 +275,11 @@ G.world = {
     this.drawMini();
   },
   drawPlayer(c) {
-    const p = G.p; let anim = ANIM.idle, fps = 4, loop = true, t = p.t, dir = p.dir;
+    const p = G.p; let anim = ANIM.idle, fps = animFps('idle'), loop = true, t = p.t, dir = p.dir;
     if (p.act) { anim = p.act.anim; fps = p.act.fps; loop = p.act.loop; t = p.act.t; }
-    else if (p.moving) { anim = p.run ? ANIM.run : ANIM.walk; fps = p.run ? 10 : 7; }
-    shadow(c, p.x, p.y, 13);
-    drawMaya(c, p.x, p.y, dir, anim, animFrame(anim, t, fps, loop), .5);
+    else if (p.moving) { anim = p.run ? ANIM.run : ANIM.walk; fps = p.run ? animFps('run') : 8.5; }
+    shadow(c, p.x, p.y, 15);
+    drawMaya(c, p.x, p.y, dir, anim, animFrame(anim, t, fps, loop, dir), WORLD_SCALE, 1, LEFTISH.has(dir));
   },
   drawMini() {
     const m = $('mini').getContext('2d'); m.drawImage(G.miniBase, 0, 0);
