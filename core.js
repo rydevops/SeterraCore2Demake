@@ -10,28 +10,42 @@ const pick = a => a[Math.floor(Math.random() * a.length)];
 const $ = id => document.getElementById(id);
 const lerp = (a, b, t) => a + (b - a) * t;
 
-/* ---------- Sprite sheet (24 x 11 atlas of 128px cells) ---------- */
-const ANIM = { idle: 0, walk: 1, run: 2, atk1: 3, atk2: 4, atk3: 5, hurt: 6, fall: 7, getup: 8, win: 9, tech: 10 };
-const ANIM_NAMES = ['Idle', 'Walk', 'Run', 'Fight 1', 'Fight 2', 'Fight 3', 'Damage', 'Fall', 'Get Up', 'Victory', 'Special'];
-// direction indices follow the sheet's column order
+/* ---------- Sprite atlas (see assets/maya_atlas.js, built by tools/slice_sprites.py) ---------- */
+const MA = window.MAYA_ATLAS;
+// idle/walk/run/melee/ranged have 8 directions; special/hurt/death/turn are single strips facing right;
+// 'getup' is the death strip played backwards.
+const ANIM = { idle: 'idle', walk: 'walk', run: 'run', melee: 'melee', ranged: 'ranged', special: 'special', hurt: 'hurt', death: 'death', getup: 'getup', turn: 'turn' };
+const ANIM_NAMES = { idle: 'Idle', walk: 'Walk', run: 'Run', melee: 'Attack 1 · Melee', ranged: 'Attack 2 · Ranged', special: 'Special', hurt: 'Hit / Hurt', death: 'Death', getup: 'Get Up', turn: 'Turn' };
+// direction indices follow the atlas order: S, SW, W, NW, N, NE, E, SE
 const D = { DOWN: 0, DL: 1, L: 2, UL: 3, U: 4, UR: 5, R: 6, DR: 7 };
-const DIR_NAMES = ['Down', 'Down-Left', 'Left', 'Up-Left', 'Up', 'Up-Right', 'Right', 'Down-Right'];
-const SECT = [6, 7, 0, 1, 2, 3, 4, 5];            // angle sector (0 = east, clockwise on screen) -> sheet dir
+const DIR_NAMES = ['S (Down)', 'SW (Down-Left)', 'W (Left)', 'NW (Up-Left)', 'N (Up)', 'NE (Up-Right)', 'E (Right)', 'SE (Down-Right)'];
+const SECT = [6, 7, 0, 1, 2, 3, 4, 5];            // angle sector (0 = east, clockwise on screen) -> atlas dir
 const dirOf = (dx, dy) => SECT[(Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) + 8) % 8];
 const OPP = d => (d + 4) % 8;
+const LEFTISH = new Set([D.DL, D.L, D.UL]);
 G.sheet = new Image();
 G.sheet.src = 'assets/maya.png';
 
-function animFrame(anim, t, fps, loop = true) {
-  const n = Math.floor(t * fps);
-  if (anim === ANIM.idle || anim === ANIM.walk) return [0, 1, 2, 1][n % 4];
-  return loop ? n % 3 : Math.min(2, n);
+const animSrc = a => MA.anims[a === 'getup' ? 'death' : a];
+const animFps = a => MA.fps[a === 'getup' ? 'death' : a];
+const isDirAnim = a => animSrc(a).dir;
+const animCount = (a, dir = 0) => { const i = animSrc(a); return i.dir ? i.n[dir] : i.n; };
+/* frame index at time t. loop: true | false (hold last frame) | 'pp' (ping-pong) */
+function animFrame(anim, t, fps, loop = true, dir = 0) {
+  const n = animCount(anim, dir), k = Math.floor(t * fps);
+  if (anim === 'getup') return n - 1 - Math.min(n - 1, k);
+  if (loop === 'pp') { const m = Math.max(1, 2 * n - 2), j = k % m; return j < n ? j : m - j; }
+  return loop ? k % n : Math.min(n - 1, k);
 }
-function drawMaya(c, x, y, dir, anim, frame, scale, alpha = 1) {
+/* total play time of a one-shot animation in seconds */
+const animDur = (a, fps = animFps(a), dir = 0) => animCount(a, dir) / fps;
+/* draw Maya; feet at (x, y). Single-strip animations face right, so flip them for left-facing dirs. */
+function drawMaya(c, x, y, dir, anim, frame, scale, alpha = 1, flip = false) {
   if (!G.sheet.complete || !G.sheet.naturalWidth) return;
-  c.save();
-  c.globalAlpha = alpha;
-  c.drawImage(G.sheet, (dir * 3 + frame) * 128, anim * 128, 128, 128, x - 64 * scale, y - 112 * scale, 128 * scale, 128 * scale);
+  const i = animSrc(anim), col = i.dir ? dir * MA.group + frame : frame, w = MA.cw * scale, h = MA.ch * scale;
+  c.save(); c.globalAlpha = alpha; c.translate(x, y);
+  if (flip && !i.dir) c.scale(-1, 1);
+  c.drawImage(G.sheet, col * MA.cw, i.row * MA.ch, MA.cw, MA.ch, -w / 2, -MA.feet * scale, w, h);
   c.restore();
 }
 function shadow(c, x, y, r) {
@@ -80,6 +94,7 @@ const Snd = {
     switch (n) {
       case 'ui': this.tone(660, .06, 'square', .05); break;
       case 'jab': this.tone(300, .08, 'sawtooth', .06, -150); this.noise(.07, .08, .03); break;
+      case 'shoot': this.noise(.06, .16); this.tone(900, .1, 'square', .05, -700); this.noise(.12, .08, .08); break;
       case 'kick': this.tone(220, .12, 'sawtooth', .07, -120); this.noise(.12, .11, .04); break;
       case 'arc': this.tone(500, .3, 'sine', .08, 700); this.noise(.2, .08, .1); break;
       case 'tech': this.tone(180, .6, 'sawtooth', .08, 900); this.tone(900, .5, 'sine', .06, -600, .2); this.noise(.4, .12, .35); break;

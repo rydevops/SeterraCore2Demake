@@ -1,6 +1,12 @@
 'use strict';
 /* Turn-based battle: Maya uses every animation (run in/out, 3 attacks, special, damage, fall, victory) */
 let B = null;
+const BATTLE_SCALE = 1.35;
+/* bullet tracer from Maya's gun hand toward an enemy */
+function shoot(M, e) {
+  const tx = e.x + e.ox, ty = e.y - 40 * e.def.s, a = Math.atan2(ty - (M.y - 52), tx - M.x), sx = M.x + Math.cos(a) * 38 * BATTLE_SCALE, sy = M.y - 52 * BATTLE_SCALE / 1.15 + Math.sin(a) * 20;
+  Snd.sfx('shoot'); G.tracer(sx, sy, tx, ty); G.spark(sx, sy, '#ffd98a', 5, 90);
+}
 G.B = () => B;
 
 function drawBattleBg(c, zone, W, H, t) {
@@ -26,7 +32,8 @@ function drawBattleBg(c, zone, W, H, t) {
   }
 }
 
-function setAnim(m, anim, dir, fps, loop) { m.anim = anim; m.dir = dir; m.fps = fps; m.loop = loop; m.t = 0; }
+function setAnim(m, anim, dir, fps, loop, t0 = 0) { m.anim = anim; m.dir = dir; m.fps = fps; m.loop = loop; m.t = t0; }
+const IDLE = M => setAnim(M, ANIM.idle, D.R, animFps('idle'), true);
 const alive = () => B.enemies.filter(e => !e.dead);
 const msg = t => { $('bmsg').textContent = t; $('bmsg').classList.toggle('hidden', !t); };
 
@@ -49,14 +56,14 @@ G.startBattle = async function (zone) {
   const enemies = types.map((t, i) => { const d = ENEMIES[t]; seen[t] = (seen[t] || 0) + 1;
     return { type: t, def: d, name: d.name + (counts[t] > 1 ? ' ' + 'ABC'[seen[t] - 1] : ''), hp: d.hp, max: d.hp, x: pos[i][0] + 160, y: pos[i][1], ox: 0, alpha: 1, flash: 0, ph: rand(0, 6), dead: false }; });
   const hx = G.VW * .22, hy = 262;
-  B = { zone, boss, enemies, guard: false, selecting: false, maya: { x: hx - 160, y: hy, hx, hy, dir: D.R, anim: ANIM.run, t: 0, fps: 11, loop: true, alpha: 1 } };
+  B = { zone, boss, enemies, guard: false, selecting: false, maya: { x: hx - 160, y: hy, hx, hy, dir: D.R, anim: ANIM.run, t: 0, fps: animFps('run'), loop: true, alpha: 1 } };
   G.fx.parts.length = G.fx.texts.length = 0; G.mode = 'battle'; document.body.classList.add('inb');
   $('touch').classList.add('hidden'); $('mini').classList.add('hidden'); $('btnMenu').classList.add('hidden'); $('bui').classList.remove('hidden');
   G.updateHud(); $('bcmd').innerHTML = ''; msg('');
   await G.fade(0, 350, '#000');
   Snd.sfx('enc');
   await Promise.all([G.tween(B.maya, { x: hx }, 600, 'out'), ...enemies.map((e, i) => G.tween(e, { x: pos[i][0] }, 600 + i * 120, 'out'))]);
-  setAnim(B.maya, ANIM.idle, D.R, 4, true);
+  IDLE(B.maya);
   msg(boss ? 'The Stone Guardian blocks your path!' : enemies.length > 1 ? `${enemies.length} enemies appear!` : `A ${enemies[0].name} appears!`);
   await G.wait(700);
   await battleLoop();
@@ -70,7 +77,7 @@ async function battleLoop() {
     if (res === 'ran') return endBattle('run');
     if (!alive().length) return victory();
     for (const e of alive()) { await enemyTurn(e); if (pl.hp <= 0) return defeat(); await G.wait(120); }
-    B.guard = false; setAnim(M, ANIM.idle, D.R, 4, true);
+    B.guard = false; IDLE(M);
   }
 }
 
@@ -90,9 +97,9 @@ function playerTurn() {
       { label: 'Item', sub: `🧪${pl.items.potion} ⚡${pl.items.ether}`, fn: items }, { label: 'Guard', sub: '+3 EP', fn: () => resolve({ type: 'guard' }) },
       { label: 'Run', sub: B.boss ? 'No escape' : '', off: B.boss, fn: () => resolve({ type: 'run' }) }]); };
     const fight = () => cmds([
-      { label: 'Jab', sub: 'Fight 1 · +2 EP', fn: () => target({ type: 'atk1' }, fight) },
-      { label: 'Kick', sub: 'Fight 2 · 3 EP', off: pl.ep < 3, fn: () => target({ type: 'atk2' }, fight) },
-      { label: 'Arc Burst', sub: 'Fight 3 · 6 EP · all', off: pl.ep < 6, fn: () => resolve({ type: 'atk3' }) },
+      { label: 'Strike', sub: 'Melee · +2 EP', fn: () => target({ type: 'atk1' }, fight) },
+      { label: 'Shoot', sub: 'Ranged ×2 · 3 EP', off: pl.ep < 3, fn: () => target({ type: 'atk2' }, fight) },
+      { label: 'Barrage', sub: 'Ranged · all · 6 EP', off: pl.ep < 6, fn: () => resolve({ type: 'atk3' }) },
       { label: '◀ Back', fn: main }]);
     const items = () => cmds([
       { label: 'Potion', sub: `+60 HP · ×${pl.items.potion}`, off: !pl.items.potion || pl.hp >= pl.maxhp, fn: () => resolve({ type: 'item', k: 'potion' }) },
@@ -116,43 +123,47 @@ function hurtEnemy(e, mult, col = '#fff') {
   if (e.hp <= 0) { e.dead = true; G.tween(e, { alpha: 0 }, 650, 'lin'); G.spark(e.x, e.y - 30, '#fff', 26, 200); }
 }
 async function runTo(M, x, y, ms = 300) {
-  const dir = dirOf(x - M.x, y - M.y); setAnim(M, ANIM.run, dir, 12, true); await G.tween(M, { x, y }, ms, 'io'); return dir;
+  const dir = dirOf(x - M.x, y - M.y); setAnim(M, ANIM.run, dir, animFps('run'), true); await G.tween(M, { x, y }, ms, 'io'); return dir;
 }
 async function runHome(M, fromDir) {
-  setAnim(M, ANIM.run, OPP(fromDir), 12, true); await G.tween(M, { x: M.hx, y: M.hy }, 300, 'io'); setAnim(M, ANIM.idle, D.R, 4, true);
+  setAnim(M, ANIM.run, OPP(fromDir), animFps('run'), true); await G.tween(M, { x: M.hx, y: M.hy }, 300, 'io'); IDLE(M);
 }
 async function perform(a) {
   const M = B.maya, pl = G.pl; M.dir = D.R; $('bcmd').innerHTML = '';
   switch (a.type) {
-    case 'atk1': case 'atk2': {
-      const e = a.t, k = a.type === 'atk1'; msg(k ? 'Jab!' : 'Kick!'); pl.ep = Math.max(0, pl.ep - (k ? 0 : 3)); if (k) pl.ep = Math.min(pl.maxep, pl.ep + 2); G.updateHud();
-      const d = await runTo(M, e.x - 58 * e.def.s - 10, clamp(e.y, 232, 290));
-      setAnim(M, k ? ANIM.atk1 : ANIM.atk2, d, k ? 10 : 8, false); Snd.sfx(k ? 'jab' : 'kick'); await G.wait(k ? 130 : 190); hurtEnemy(e, k ? 1 : 1.7); await G.wait(k ? 260 : 330);
+    case 'atk1': {      // melee: dash in with Run, hit with the melee strip, Run back
+      const e = a.t; msg('Strike!'); pl.ep = Math.min(pl.maxep, pl.ep + 2); G.updateHud();
+      const d = await runTo(M, e.x - 60 * e.def.s - 10, clamp(e.y, 232, 290));
+      setAnim(M, ANIM.melee, d, animFps('melee'), false); Snd.sfx('jab'); await G.wait(320); hurtEnemy(e, 1.1); await G.wait(300);
       await runHome(M, d); break;
     }
-    case 'atk3': {
-      msg('Arc Burst!'); pl.ep -= 6; G.updateHud(); const al = alive(), mx = Math.min(...al.map(e => e.x)), my = al.reduce((s, e) => s + e.y, 0) / al.length;
-      const d = await runTo(M, mx - 90, clamp(my, 240, 285), 380);
-      setAnim(M, ANIM.atk3, D.R, 6, false); Snd.sfx('arc'); G.ring(M.x + 30, M.y - 30, 90, '#7fd0ff', .5); await G.wait(220);
-      for (const e of al) { hurtEnemy(e, 1.15, '#7fd0ff'); G.ring(e.x, e.y - 10, 50, '#7fd0ff', .4); } await G.wait(480);
-      await runHome(M, d); break;
+    case 'atk2': {      // ranged: two quick shots from where she stands
+      const e = a.t; msg('Shoot!'); pl.ep -= 3; G.updateHud(); const d = dirOf(e.x - M.x, e.y - M.y);
+      setAnim(M, ANIM.ranged, d, animFps('ranged'), false);
+      for (let i = 0; i < 2; i++) { await G.wait(i ? 220 : 230); shoot(M, e); hurtEnemy(e, .95); }
+      await G.wait(320); IDLE(M); break;
+    }
+    case 'atk3': {      // barrage: three volleys hitting every enemy
+      msg('Barrage!'); pl.ep -= 6; G.updateHud(); setAnim(M, ANIM.ranged, D.R, animFps('ranged') * 1.2, true);
+      for (let v = 0; v < 3; v++) { await G.wait(v ? 240 : 260); for (const e of alive()) { shoot(M, e); hurtEnemy(e, .72, '#ffd98a'); } }
+      await G.wait(300); IDLE(M); break;
     }
     case 'tech': {
-      const e = a.t; msg('Special Tech: Overdrive!'); pl.ep -= 10; G.updateHud(); setAnim(M, ANIM.tech, D.R, 3.6, false); Snd.sfx('tech');
-      G.ring(M.x, M.y - 10, 70, '#7fd0ff', .8); await G.wait(500); G.ring(M.x, M.y - 10, 100, '#bfe9ff', .7); await G.wait(300);
+      const e = a.t; msg('Special Tech: Overdrive!'); pl.ep -= 10; G.updateHud(); setAnim(M, ANIM.special, D.R, 9, false); Snd.sfx('tech');
+      G.ring(M.x, M.y - 10, 70, '#7fd0ff', .8); await G.wait(450); G.ring(M.x, M.y - 10, 100, '#bfe9ff', .7); await G.wait(380);
       G.bolt(e.x, e.y - 20); G.ring(e.x, e.y, 80, '#9be7ff', .6); G.shake = 14; hurtEnemy(e, 3.6, '#9be7ff'); await G.wait(250); hurtEnemy(e, 1.2, '#9be7ff'); await G.wait(500);
-      setAnim(M, ANIM.idle, D.R, 4, true); break;
+      IDLE(M); break;
     }
-    case 'guard': msg('Maya braces for impact.'); B.guard = true; pl.ep = Math.min(pl.maxep, pl.ep + 3); G.updateHud(); setAnim(M, ANIM.hurt, D.R, 0.0001, false);
+    case 'guard': msg('Maya braces for impact.'); B.guard = true; pl.ep = Math.min(pl.maxep, pl.ep + 3); G.updateHud(); setAnim(M, ANIM.special, D.R, 1, false, 4);   // hold an aura frame of the Special strip
       G.ring(M.x, M.y - 30, 44, '#7fd0ff', .6); Snd.sfx('ui'); await G.wait(650); break;
     case 'item': {
-      setAnim(M, ANIM.win, D.DOWN, 5, true); pl.items[a.k]--; Snd.sfx('heal');
+      setAnim(M, ANIM.turn, D.R, 10, 'pp'); pl.items[a.k]--; Snd.sfx('heal');
       if (a.k === 'potion') { const h = Math.min(60, pl.maxhp - pl.hp); pl.hp += h; msg('Potion: +' + h + ' HP'); G.floatText(M.x, M.y - 110, '+' + h, '#6bff8f', true); }
       else { const h = Math.min(20, pl.maxep - pl.ep); pl.ep += h; msg('Ether: +' + h + ' EP'); G.floatText(M.x, M.y - 110, '+' + h + ' EP', '#7fd0ff', true); }
-      G.updateHud(); G.ring(M.x, M.y - 10, 50, '#6bff8f', .7); await G.wait(900); setAnim(M, ANIM.idle, D.R, 4, true); break;
+      G.updateHud(); G.ring(M.x, M.y - 10, 50, '#6bff8f', .7); await G.wait(900); IDLE(M); break;
     }
     case 'run': {
-      if (Math.random() < .65) { msg('Maya escaped!'); setAnim(M, ANIM.run, D.L, 12, true); await G.tween(M, { x: -80 }, 650, 'in'); return 'ran'; }
+      if (Math.random() < .65) { msg('Maya escaped!'); setAnim(M, ANIM.run, D.L, animFps('run'), true); await G.tween(M, { x: -80 }, 650, 'in'); return 'ran'; }
       msg("Couldn't get away!"); await G.wait(700); break;
     }
   }
@@ -171,10 +182,10 @@ async function enemyTurn(e) {
     let { d, crit } = calc(e.def.atk, heavy ? 1.9 : 1, pl.def); if (B.guard) d = Math.max(1, Math.round(d * .45));
     pl.hp = Math.max(0, pl.hp - d); G.updateHud(); G.shake = heavy ? 14 : 7; Snd.sfx('hurt');
     G.floatText(M.x, M.y - 100, d, B.guard ? '#7fd0ff' : '#ff6b6b', crit); G.spark(M.x, M.y - 50, '#ff6b6b', 12);
-    if (pl.hp > 0) { if (!B.guard) setAnim(M, ANIM.hurt, D.R, 7, false); }
+    if (pl.hp > 0) { if (!B.guard) setAnim(M, ANIM.hurt, D.R, animFps('hurt'), false); }
   }
   await G.tween(e, { ox: 0 }, 260, 'out'); await G.wait(pl.hp > 0 ? 260 : 100);
-  if (pl.hp > 0 && !B.guard) setAnim(M, ANIM.idle, D.R, 4, true);
+  if (pl.hp > 0 && !B.guard) IDLE(M);
 }
 
 /* ---------- outcomes ---------- */
@@ -189,7 +200,7 @@ async function endBattle(how) {
 }
 async function victory() {
   const M = B.maya, pl = G.pl; await G.wait(500);
-  msg('Victory!'); Snd.sfx('win'); setAnim(M, ANIM.win, D.DOWN, 5, true);
+  msg('Victory!'); Snd.sfx('win'); setAnim(M, ANIM.turn, D.R, animFps('turn'), 'pp');
   let exp = 0, gold = 0, drops = 0; for (const e of B.enemies) { exp += e.def.exp; gold += e.def.gold; if (Math.random() < .15 || e.def.boss) drops++; }
   pl.gold += gold; pl.items.potion += drops; const ups = G.gainExp(exp); G.updateHud();
   if (ups) { Snd.sfx('lvl'); G.floatText(M.x, M.y - 120, 'LEVEL UP!', '#ffd23f', true); G.ring(M.x, M.y - 10, 70, '#ffd23f', .9); }
@@ -200,7 +211,7 @@ async function victory() {
   await G.say(t); await endBattle('win');
 }
 async function defeat() {
-  const M = B.maya; msg('Maya falls…'); Snd.sfx('lose'); setAnim(M, ANIM.fall, D.R, 3, false); await G.wait(1700);
+  const M = B.maya; msg('Maya falls…'); Snd.sfx('lose'); setAnim(M, ANIM.death, D.R, animFps('death'), false); await G.wait(1700);
   await endBattle('lose');
 }
 
@@ -213,7 +224,7 @@ G.battleDraw = c => {
   c.save(); if (G.shake > 0) c.translate(rand(-G.shake, G.shake) * .5, rand(-G.shake, G.shake) * .5);
   drawBattleBg(c, B.zone, W, H, G.t);
   const ents = B.enemies.map(e => ({ y: e.y, f: () => drawEnemy(c, e, G.t) }));
-  ents.push({ y: M.y, f: () => { shadow(c, M.x, M.y, 27); drawMaya(c, M.x, M.y, M.dir, M.anim, animFrame(M.anim, M.t, M.fps, M.loop), 1, M.alpha); } });
+  ents.push({ y: M.y, f: () => { shadow(c, M.x, M.y, 30); drawMaya(c, M.x, M.y, M.dir, M.anim, animFrame(M.anim, M.t, M.fps, M.loop, M.dir), BATTLE_SCALE, M.alpha); } });
   ents.sort((a, b) => a.y - b.y).forEach(e => e.f());
   for (const e of alive()) {     // hp bars + target arrows
     const bw = 46, bx = e.x + e.ox - bw / 2, by = e.y - 92 * e.def.s - (e.type === 'bat' ? 0 : 0);

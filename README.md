@@ -13,7 +13,7 @@ Built with plain HTML/CSS/JS + `<canvas>` (no build step). The game lives at the
 | Touch | Keyboard |
 |---|---|
 | Drag anywhere on the left half – floating 8‑way analog stick (push fully to run) | Arrow keys / WASD (Shift = run) |
-| **A** – combo (Fight 1→2→3) / talk | Space, Enter, Z |
+| **A** – melee / ranged combo, or talk | Space, Enter, Z |
 | **S** – Special (Tech) pose | X, C |
 | **RUN** – toggle sprint | Shift |
 | ☰ – menu (items, save, sound) | Esc, M |
@@ -21,19 +21,20 @@ Built with plain HTML/CSS/JS + `<canvas>` (no build step). The game lives at the
 In battle, tap the command buttons; tap an enemy (or its button) to target.
 
 ## How the sprite sheet is used
-`tools/maya_sheet_source.png` is sliced by `tools/slice_sprites.py` into `assets/maya.png` (24 columns = 8 directions × 3 frames, 11 rows = animations). Every animation and direction is used:
+`tools/maya_sheet_source.png` (+ `tools/maya_sprite_atlas_metadata.json`) is sliced by `tools/slice_sprites.py` into `assets/maya.png` and `assets/maya_atlas.js`. The metadata is only approximate, so the script uses it for rows and ordering and then finds the real frames from the pixels (hair blobs, k-means, hand-measured death frames). Frame counts are per direction (e.g. Up walk has 4 frames, Down melee has 6, death has 7).
 
-| Sheet row | In game |
+| Sheet strip | In game |
 |---|---|
-| Idle / Walk / Run | Overworld movement in all 8 directions; Run also used to dash in/out of melee |
-| Fight 1 / 2 / 3 | Jab, Kick, Arc Burst in battle (and the **A** combo on the map) |
-| Special (Tech) | Overdrive tech in battle, **S** on the map |
-| Damage | Taking a hit; Guard brace |
-| Fall | Maya is defeated |
-| Get Up | Waking at the Inn / after a defeat |
-| Victory | Battle won, opening chests, using items |
+| Idle / Walk / Run (8 directions) | Overworld movement and idle in all 8 directions; Run is also how she dashes in and out of melee |
+| Attack 1 – Melee (8 dir) | **Strike** in battle (dash in, hit, run back); **A** on the map |
+| Attack 2 – Ranged (8 dir) | **Shoot** (2 shots) and **Barrage** (3 volleys, hits all) with bullet tracers; **A** on the map |
+| Special | **Tech: Overdrive**, Guard aura, **S** on the map |
+| Hit / Hurt | Taking damage |
+| Death | Maya is defeated |
+| Death (reversed) | Get Up – waking at the Inn / after a defeat |
+| Turn | Victory twirl, using items, opening chests |
 
-The title screen cycles through every animation and direction.
+The title screen cycles through every strip and direction.
 
 ## PWA updates
 `sw.js` is **network‑first**: every launch (and every resume from background) re-checks the server, installs a new version if found, swaps caches, and reloads the game at the next safe moment (never mid‑battle). Offline play falls back to the cache.
@@ -41,4 +42,4 @@ The title screen cycles through every animation and direction.
 **To ship an update:** change `GAME_VERSION` in `version.js` (and merge). Installed copies pick it up the next time they are opened. The version is shown at the bottom‑right of the title screen.
 
 ## Files
-`index.html`, `style.css`, `manifest.webmanifest`, `sw.js`, `version.js` · `core.js` (helpers/audio/input/save) · `art.js` (procedural enemies + effects) · `world.js` (map, overworld) · `battle.js` · `main.js` (loop, menus, update logic) · `assets/`, `icons/`, `tools/`
+`index.html`, `style.css`, `manifest.webmanifest`, `sw.js`, `version.js` · `core.js` (helpers/atlas/audio/input/save) · `art.js` (procedural enemies + effects) · `world.js` (map, overworld) · `battle.js` · `main.js` (loop, menus, update logic) · `assets/`, `icons/`, `tools/`

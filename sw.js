@@ -2,7 +2,7 @@
 importScripts('./version.js');
 const CACHE = 'maya-rpg-' + self.GAME_VERSION;
 const ASSETS = ['./', 'index.html', 'style.css', 'version.js', 'core.js', 'art.js', 'world.js', 'battle.js', 'main.js',
-  'manifest.webmanifest', 'assets/maya.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
+  'manifest.webmanifest', 'assets/maya.png', 'assets/maya_atlas.js', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => Promise.all(ASSETS.map(u => c.add(new Request(u, { cache: 'reload' })).catch(() => {})))).then(() => self.skipWaiting()));

@@ -51,9 +51,12 @@ function drawTitle(c) {
   const W = G.VW, H = G.VH; let g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#0b1230'); g.addColorStop(.6, '#1c3b6e'); g.addColorStop(1, '#0d2a2a'); c.fillStyle = g; c.fillRect(0, 0, W, H);
   c.fillStyle = 'rgba(255,255,255,.7)'; for (let i = 0; i < 50; i++) c.fillRect((i * 137) % W, (i * 71) % (H * .6), 1.5, 1.5);
   c.fillStyle = '#0a1d1d'; c.beginPath(); c.moveTo(0, H); for (let x = 0; x <= W; x += 24) c.lineTo(x, H - 70 - 20 * Math.sin(x * .03)); c.lineTo(W, H); c.fill();
-  const ai = Math.floor(G.t / 2.4) % 11, di = Math.floor(G.t / .3) % 8, x = W * .78, y = H * .76;
-  shadow(c, x, y, 40); drawMaya(c, x, y, di, ai, animFrame(ai, G.t, ai === ANIM.run ? 10 : ai === 0 || ai === 1 ? 5 : 6, true), 1.5);
-  c.font = '700 12px -apple-system,Helvetica,Arial,sans-serif'; c.textAlign = 'center'; c.fillStyle = '#9fc4ff'; c.fillText(`${ANIM_NAMES[ai]} · ${DIR_NAMES[di]}`, x, y + 22);
+  const names = Object.keys(ANIM_NAMES), dur = 3, ai = Math.floor(G.t / dur) % names.length, an = names[ai], lt = G.t % dur;
+  const di = isDirAnim(an) ? Math.floor(lt / (dur / 8)) % 8 : 6, x = W * .78, y = H * .76, fps = animFps(an);
+  shadow(c, x, y, 40);
+  drawMaya(c, x, y, di, an, animFrame(an, lt, fps, an === 'turn' ? 'pp' : true, di), 1.7);
+  c.font = '700 12px -apple-system,Helvetica,Arial,sans-serif'; c.textAlign = 'center'; c.fillStyle = '#9fc4ff';
+  c.fillText(isDirAnim(an) ? `${ANIM_NAMES[an]} · ${DIR_NAMES[di]}` : ANIM_NAMES[an], x, y + 22);
 }
 
 /* ---------- main loop ---------- */
